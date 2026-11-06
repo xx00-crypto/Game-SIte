@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spelling Clash — Heroes vs the Dark Side</title>
+    <meta name="description" content="A pixel-art spelling battle: spell words to summon heroes and defend the kingdom from the Darkest King's army.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <!-- SheetJS for parsing and exporting Excel files -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background: radial-gradient(ellipse at top, #2a2350 0%, #12101f 55%, #08070f 100%) fixed;
+            color: #cbd5e1;
+        }
+        .tab-active { border-bottom: 4px solid #facc15; color: #facc15; text-shadow: 2px 2px 0 #000; }
+        .tab-inactive { color: #64748b; border-bottom: 4px solid transparent; }
+        .tab-inactive:hover { color: #94a3b8; }
+
+        .pixel-border {
+            border: 4px solid #000;
+            box-shadow: 6px 6px 0px #000;
+            background-color: #f8f1df;
+            color: #000;
+        }
+        .pixel-panel {
+            border: 4px solid #000;
+            box-shadow: 6px 6px 0px #000;
+            background-color: #1c1a2e;
+        }
+        .pixel-btn {
+            border: 4px solid #000;
+            box-shadow: 4px 4px 0px #000;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .pixel-btn:active {
+            box-shadow: 0px 0px 0px #000;
+            transform: translate(4px, 4px);
+        }
+        .pixel-btn:disabled { opacity: 0.5; cursor: wait; }
+
+        #game-canvas {
+            background-color: #1f2937;
+            border: 4px solid #000;
+            box-shadow: 8px 8px 0px #000;
+            image-rendering: pixelated;
+        }
+        .pixelated { image-rendering: pixelated; }
+
+        .health-bar-container { width: 100%; height: 28px; background-color: #000; border: 4px solid #000; position: relative; }
+        .health-bar-fill { height: 100%; transition: width 0.3s ease; }
+        .health-bar-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: white; text-shadow: 2px 2px 0px #000; }
+
+        .roster-card { border: 3px solid #000; box-shadow: 3px 3px 0 #000; }
+        .roster-card img { height: 72px; width: auto; margin: 0 auto; object-fit: contain; }
+
+        @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+        .shake { animation: shake 0.25s linear 2; }
+        @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        .bob { animation: bob 1.4s ease-in-out infinite; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Navigation -->
+    <nav class="bg-gray-900 border-b-4 border-black p-4 flex justify-center space-x-8">
+        <button id="btn-arena" class="tab-active pb-2 px-2 text-sm focus:outline-none transition-colors">BATTLE</button>
+        <button id="btn-teacher" class="tab-inactive pb-2 px-2 text-sm focus:outline-none transition-colors">TEACHER</button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow flex items-start md:items-center justify-center p-4">
+
+        <!-- Loading State -->
+        <div id="loading-state" class="text-sm text-yellow-400 animate-pulse mt-24 text-center leading-loose">
+            SUMMONING HEROES...
+        </div>
+
+        <!-- Home View -->
+        <div id="view-home" class="hidden w-full max-w-5xl">
+            <div class="grid md:grid-cols-[1fr_minmax(0,26rem)_1fr] gap-6 items-stretch">
+
+                <!-- Hero roster -->
+                <section class="pixel-panel p-4 order-2 md:order-1">
+                    <div class="relative mb-4 border-4 border-black overflow-hidden h-40">
+                        <img src="/.netlify/images?url=/img/human-castle.jpg&w=320&fm=webp" alt="The human kingdom's castle tower with the princess on her balcony" class="w-full h-full object-cover object-top pixelated">
+                        <div class="absolute bottom-0 inset-x-0 bg-black/70 text-blue-300 text-[0.6rem] p-2 text-center">THE KINGDOM</div>
+                    </div>
+                    <h3 class="text-blue-300 text-xs mb-3 text-center">YOUR HEROES</h3>
+                    <div id="hero-roster" class="grid grid-cols-2 gap-2"></div>
+                    <p class="text-[0.55rem] text-gray-400 mt-3 leading-relaxed text-center">LONGER WORDS SUMMON STRONGER HEROES</p>
+                </section>
+
+                <!-- Start panel -->
+                <section class="pixel-border p-6 md:p-8 flex flex-col items-center text-center order-1 md:order-2">
+                    <p class="text-[0.6rem] text-purple-700 mb-3 tracking-widest">HEROES VS THE DARK SIDE</p>
+                    <h1 class="text-3xl md:text-4xl text-yellow-500 mb-6 font-bold leading-tight" style="text-shadow: 3px 3px 0 #000;">SPELLING<br>CLASH</h1>
+
+                    <div class="w-full mb-6 text-left">
+                        <label for="player-name-input" class="block text-xs text-gray-600 mb-2 font-bold text-center">ENTER YOUR NAME:</label>
+                        <input type="text" id="player-name-input" maxlength="16" placeholder="HERO NAME" class="w-full text-center p-3 border-4 border-black outline-none font-bold text-sm uppercase">
+                    </div>
+
+                    <p class="mb-4 text-xs text-gray-500 font-bold">CHOOSE YOUR DIFFICULTY:</p>
+                    <div class="flex flex-col space-y-4 w-full mb-4">
+                        <button id="btn-start-0" class="pixel-btn bg-pink-500 hover:bg-pink-600 text-white py-3 px-4 text-xs font-bold">BABY LEVEL: MULTIPLE CHOICE</button>
+                        <button id="btn-start-1" class="pixel-btn bg-green-500 hover:bg-green-600 text-white py-3 px-4 text-xs font-bold">LEVEL 1: GUIDED</button>
+                        <button id="btn-start-2" class="pixel-btn bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 text-xs font-bold">LEVEL 2: SCRAMBLED</button>
+                        <button id="btn-start-3" class="pixel-btn bg-purple-500 hover:bg-purple-600 text-white py-3 px-4 text-xs font-bold">LEVEL 3: FREE TYPE</button>
+                    </div>
+                    <p id="active-pack-label" class="text-[0.55rem] text-gray-500 mb-6">WORD PACK: DEFAULT</p>
+
+                    <!-- Leaderboard -->
+                    <div class="w-full border-4 border-black p-4 bg-gray-800 mt-auto">
+                        <h3 class="text-yellow-400 text-xs font-bold mb-3 text-center">LEADERBOARD (TOP 5)</h3>
+                        <div class="flex justify-center space-x-2 md:space-x-4 mb-3 border-b-2 border-gray-600 pb-2">
+                            <button id="btn-lb-0" class="text-xs font-bold text-gray-500 hover:text-yellow-400">BABY</button>
+                            <button id="btn-lb-1" class="text-xs font-bold text-white hover:text-yellow-400">L1</button>
+                            <button id="btn-lb-2" class="text-xs font-bold text-gray-500 hover:text-yellow-400">L2</button>
+                            <button id="btn-lb-3" class="text-xs font-bold text-gray-500 hover:text-yellow-400">L3</button>
+                        </div>
+                        <ul id="leaderboard-list" class="text-[0.6rem] md:text-xs text-white space-y-2 text-left tracking-wide">
+                            <li class="text-center text-gray-500">LOADING...</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Enemy roster -->
+                <section class="pixel-panel p-4 order-3">
+                    <div class="relative mb-4 border-4 border-black overflow-hidden h-40">
+                        <img src="/.netlify/images?url=/img/dark-castle.jpg&w=320&fm=webp" alt="The Darkest King's castle tower with the king on his throne balcony" class="w-full h-full object-cover object-top pixelated">
+                        <div class="absolute bottom-0 inset-x-0 bg-black/70 text-red-300 text-[0.6rem] p-2 text-center">DARKEST KING'S CASTLE</div>
+                    </div>
+                    <h3 class="text-red-400 text-xs mb-3 text-center">THE DARK SIDE</h3>
+                    <div id="enemy-roster" class="grid grid-cols-2 gap-2"></div>
+                    <p class="text-[0.55rem] text-gray-400 mt-3 leading-relaxed text-center">THE DARKEST KING RIDES OUT WHEN HIS CASTLE IS HALF DESTROYED</p>
+                </section>
+            </div>
+        </div>
+
+        <!-- Teacher Dashboard View -->
+        <div id="view-teacher" class="hidden w-full max-w-2xl pixel-border p-6">
+            <h2 class="text-xl mb-6 font-bold">TEACHER PORTAL</h2>
+
+            <!-- Pack Manager / File Import Section -->
+            <div class="mb-6 p-4 border-4 border-black bg-gray-800 text-white">
+                <label for="select-vocab-pack" class="block text-xs text-yellow-400 mb-2 font-bold">SELECT VOCAB PACK:</label>
+                <div class="flex flex-col md:flex-row gap-2 mb-4">
+                    <select id="select-vocab-pack" class="flex-grow p-3 border-4 border-black text-black outline-none font-bold text-xs uppercase bg-white">
+                        <option value="default">DEFAULT</option>
+                    </select>
+                    <button id="btn-export-pack" class="pixel-btn bg-yellow-500 hover:bg-yellow-600 text-black py-2 px-3 text-xs font-bold">EXPORT EXCEL</button>
+                </div>
+
+                <div class="border-t-2 border-gray-600 pt-4">
+                    <label class="block text-xs text-yellow-400 mb-2 font-bold">IMPORT VOCAB FILE (.XLSX / .CSV / .TXT):</label>
+                    <div class="flex gap-2">
+                        <input type="file" id="file-import-input" accept=".xlsx, .xls, .csv, .txt" class="hidden">
+                        <button id="btn-trigger-file" class="pixel-btn bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 text-xs font-bold w-full">CHOOSE FILE TO IMPORT</button>
+                    </div>
+                    <p class="text-[0.55rem] text-gray-400 mt-2 leading-relaxed">ONE WORD OR PHRASE PER ROW IN THE FIRST COLUMN. THE FILE NAME BECOMES THE PACK NAME.</p>
+                </div>
+            </div>
+
+            <!-- Single Word Add -->
+            <div class="flex gap-2 mb-6">
+                <input type="text" id="new-word-input" maxlength="80" placeholder="ADD WORD TO ACTIVE PACK..." class="flex-grow min-w-0 p-3 border-4 border-black outline-none font-bold text-sm text-black uppercase">
+                <button id="btn-add-word" class="pixel-btn bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 text-sm font-bold">ADD</button>
+            </div>
+
+            <div class="border-4 border-black bg-gray-100 overflow-hidden">
+                <ul id="vocab-list" class="divide-y-4 divide-black max-h-80 overflow-y-auto">
+                    <!-- Vocab items injected here -->
+                </ul>
+            </div>
+            <p class="text-[0.65rem] text-gray-500 mt-4 leading-relaxed font-bold">THE SELECTED PACK IS USED IN THE BATTLE ARENA.</p>
+        </div>
+
+        <!-- Battle Arena View -->
+        <div id="view-arena" class="hidden w-full max-w-4xl flex flex-col items-center">
+
+            <!-- Health Bars -->
+            <div class="w-full flex justify-between items-end mb-6 space-x-4 md:space-x-8">
+                <div class="w-[38%] flex flex-col">
+                    <div id="player-name-display" class="text-blue-400 text-xs mb-2 font-bold uppercase truncate">PLAYER</div>
+                    <div class="health-bar-container">
+                        <div id="player-health" class="health-bar-fill bg-blue-500" style="width: 100%;"></div>
+                        <div class="health-bar-text" id="player-health-text">1000/1000</div>
+                    </div>
+                </div>
+
+                <div class="text-lg md:text-xl text-yellow-400 font-bold pb-1">VS</div>
+
+                <div class="w-[58%] flex flex-col items-end">
+                    <div class="text-red-400 text-xs mb-2 font-bold uppercase text-right">DARKEST KING'S CASTLE</div>
+                    <div class="health-bar-container">
+                        <div id="enemy-health" class="health-bar-fill bg-red-500" style="width: 100%; float: right;"></div>
+                        <div class="health-bar-text" id="enemy-health-text">2000/2000</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Canvas -->
+            <div class="relative w-full mb-8">
+                <canvas id="game-canvas" width="960" height="320" class="w-full max-w-[960px] block mx-auto"></canvas>
+
+                <!-- Overlay Menus (Game Over) -->
+                <div id="game-overlay" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-white z-10 hidden p-4">
+                    <h2 id="overlay-title" class="text-2xl md:text-3xl text-yellow-400 mb-4 text-center leading-tight font-bold">SPELLING<br>CLASH</h2>
+                    <p id="overlay-msg" class="mb-4 text-xs text-center text-gray-300 leading-loose"></p>
+
+                    <!-- Summary Stats -->
+                    <div id="summary-stats" class="text-xs space-y-3 mb-6 hidden border-4 border-gray-600 p-4 md:p-6 bg-gray-900 shadow-[8px_8px_0px_#000]">
+                        <div class="flex justify-between w-56"><span class="text-gray-400">WORDS SPELLED:</span><span id="stat-words" class="text-white font-bold">0</span></div>
+                        <div class="flex justify-between w-56"><span class="text-gray-400">ACCURACY:</span><span id="stat-acc" class="text-white font-bold">0%</span></div>
+                        <div class="flex justify-between w-56"><span class="text-gray-400">MAX COMBO:</span><span id="stat-combo" class="text-yellow-400 font-bold">x1</span></div>
+                    </div>
+
+                    <button id="btn-restart" class="pixel-btn bg-blue-500 hover:bg-blue-600 text-white py-3 px-6 text-xs font-bold hidden">BACK TO MENU</button>
+                </div>
+            </div>
+
+            <!-- Typing Interface -->
+            <div class="w-full max-w-[960px] pixel-border p-6 text-center relative">
+                <div id="combo-display" class="absolute top-2 right-4 text-xl md:text-2xl text-yellow-500 font-bold hidden transition-transform duration-100">
+                    COMBO x1
+                </div>
+                <div id="spell-display" class="absolute top-10 right-4 md:right-6 text-[0.6rem] md:text-xs text-cyan-400 font-bold hidden animate-pulse bg-gray-900 border-2 border-cyan-500 p-2 text-right z-10">
+                    <span id="spell-name" class="text-sm text-white">FREEZE</span> READY!<br><span id="spell-hint">[ENTER] TO USE</span>
+                </div>
+                <div class="text-xs text-gray-500 mb-4 font-bold" id="interface-title">SPELL TO SUMMON</div>
+                <div id="current-word-display" class="text-lg md:text-xl text-black mb-6 min-h-12 flex flex-wrap items-center justify-center tracking-widest font-bold">
+                    WAITING...
+                </div>
+
+                <!-- Level 0 Choice Options Container -->
+                <div id="mcq-options-container" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2 hidden"></div>
+
+                <input type="text" id="typing-input" disabled autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="TYPE HERE..." class="w-full text-center text-sm md:text-base p-4 border-4 border-black outline-none disabled:bg-gray-200 uppercase font-bold">
+            </div>
+
+        </div>
+    </main>
+
+    <script type="module">
+        // --- Characters (sprites cut from the hero and dark side sheets) ---
+        const CHARACTERS = {
+            wizard:     { side: 'hero',  name: 'WIZARD',       height: 62, speed: 100, hp: 30,   damage: 10, minLen: 0 },
+            prophet:    { side: 'hero',  name: 'PROPHET',      height: 64, speed: 90,  hp: 55,   damage: 18, minLen: 6 },
+            princess:   { side: 'hero',  name: 'PRINCESS',     height: 58, speed: 85,  hp: 80,   damage: 28, minLen: 10 },
+            knight:     { side: 'hero',  name: 'HOLY KNIGHT',  height: 64, speed: 75,  hp: 160,  damage: 50, minLen: 14 },
+            goblin:     { side: 'enemy', name: 'GOBLIN',       height: 54, speed: 80,  hp: 60,   damage: 5 },
+            skeleton:   { side: 'enemy', name: 'SKELETON',     height: 58, speed: 60,  hp: 140,  damage: 10 },
+            darkknight: { side: 'enemy', name: 'DARK KNIGHT',  height: 64, speed: 50,  hp: 220,  damage: 20 },
+            dragon:     { side: 'enemy', name: 'DARK DRAGON',  height: 80, speed: 40,  hp: 300,  damage: 30, flying: true },
+            darklord:   { side: 'enemy', name: 'DARK LORD',    height: 72, speed: 25,  hp: 600,  damage: 50 },
+            king:       { side: 'enemy', name: 'DARKEST KING', height: 82, speed: 20,  hp: 1200, damage: 80, boss: true }
+        };
+        const FRAMES = ['walk1', 'walk2', 'attack', 'defeat'];
+        const spriteUrl = (key, frame) => `/.netlify/images?url=/img/sprites/${key}-${frame}.png&fm=webp`;
+        const sprites = {};
+
+        function loadImage(src, fallback) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => {
+                    if (!fallback) return resolve(null);
+                    img.onerror = () => resolve(null);
+                    img.src = fallback;
+                };
+                img.src = src;
+            });
+        }
+
+        async function loadSprites() {
+            const jobs = [];
+            for (const key of Object.keys(CHARACTERS)) {
+                sprites[key] = {};
+                for (const frame of FRAMES) {
+                    jobs.push(loadImage(spriteUrl(key, frame), `/img/sprites/${key}-${frame}.png`).then(img => { sprites[key][frame] = img; }));
+                }
+            }
+            jobs.push(loadImage('/.netlify/images?url=/img/human-castle.jpg&h=320&fm=webp', '/img/human-castle.jpg').then(img => { sprites.humanCastle = img; }));
+            jobs.push(loadImage('/.netlify/images?url=/img/dark-castle.jpg&h=320&fm=webp', '/img/dark-castle.jpg').then(img => { sprites.darkCastle = img; }));
+            await Promise.all(jobs);
+        }
+
+        // --- API (Netlify Database via functions) ---
+        async function api(path, options = {}) {
+            const res = await fetch(path, {
+                ...options,
+                headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+            });
+            if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+            return res.status === 204 ? null : res.json();
+        }
+
+        // Core App State
+        let vocabList = [];
+        let activePackId = localStorage.getItem('spelling-clash-pack') || 'default';
+        let availablePacks = ['default'];
+
+        // UI Elements
+        const $ = (id) => document.getElementById(id);
+        const btnArena = $('btn-arena');
+        const btnTeacher = $('btn-teacher');
+        const viewArena = $('view-arena');
+        const viewTeacher = $('view-teacher');
+        const viewHome = $('view-home');
+        const loadingState = $('loading-state');
+
+        const playerNameInput = $('player-name-input');
+        const playerNameDisplay = $('player-name-display');
+        const activePackLabel = $('active-pack-label');
+
+        const vocabListEl = $('vocab-list');
+        const newWordInput = $('new-word-input');
+        const btnAddWord = $('btn-add-word');
+        const selectVocabPack = $('select-vocab-pack');
+        const btnExportPack = $('btn-export-pack');
+        const btnTriggerFile = $('btn-trigger-file');
+        const fileImportInput = $('file-import-input');
+
+        const canvas = $('game-canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        const playerHealthBar = $('player-health');
+        const enemyHealthBar = $('enemy-health');
+        const playerHealthText = $('player-health-text');
+        const enemyHealthText = $('enemy-health-text');
+        const gameOverlay = $('game-overlay');
+        const overlayTitle = $('overlay-title');
+        const overlayMsg = $('overlay-msg');
+        const currentWordDisplay = $('current-word-display');
+        const typingInput = $('typing-input');
+        const mcqContainer = $('mcq-options-container');
+        const interfaceTitle = $('interface-title');
+        const comboDisplay = $('combo-display');
+        const spellDisplay = $('spell-display');
+        const spellNameDisplay = $('spell-name');
+        const spellHint = $('spell-hint');
+        const btnRestart = $('btn-restart');
+
+        const lbList = $('leaderboard-list');
+        const lbButtons = [0, 1, 2, 3].map(i => $(`btn-lb-${i}`));
+        let currentLbLevel = 1;
+
+        // Game State
+        const PLAYER_MAX_HP = 1000;
+        const ENEMY_MAX_HP = 2000;
+        const W = canvas.width;
+        const H = canvas.height;
+        const CASTLE_W = 126;
+        const BASE_ZONE = 110;
+        const GROUND_Y = 250;
+        const MELEE_RANGE = 44;
+
+        const freshState = (overrides = {}) => ({
+            status: 'menu',
+            currentLevel: 1,
+            playerHP: PLAYER_MAX_HP,
+            enemyHP: ENEMY_MAX_HP,
+            friendlies: [],
+            enemies: [],
+            corpses: [],
+            effects: [],
+            lastEnemySpawn: 0,
+            targetWord: '',
+            displayPrompt: '',
+            animationFrameId: null,
+            wordsSpelled: 0,
+            combo: 1,
+            maxCombo: 1,
+            lastSpelledWord: null,
+            perfectWords: 0,
+            currentWordPerfect: true,
+            spellReady: null,
+            freezeTimer: 0,
+            healFlash: 0,
+            playerWon: false,
+            bossSummoned: false,
+            bannerText: '',
+            bannerTimer: 0,
+            explosionRadius: 0,
+            endTimer: 0,
+            lastTime: 0,
+            ...overrides
+        });
+        let gameState = freshState();
+
+        // --- Initialization ---
+
+        async function initApp() {
+            try {
+                await Promise.all([loadSprites(), loadVocab()]);
+                renderRosters();
+                setupEventListeners();
+                fetchLeaderboard();
+                loadingState.classList.add('hidden');
+                switchTab('home');
+                drawIdleScene();
+            } catch (error) {
+                console.error('Initialization error:', error);
+                loadingState.innerHTML = 'THE PORTAL FAILED TO OPEN.<br>PLEASE REFRESH THE PAGE.';
+                loadingState.classList.remove('animate-pulse');
+                loadingState.classList.add('text-red-500');
+            }
+        }
+
+        function renderRosters() {
+            const card = (key, info, line) => `
+                <div class="roster-card ${info.side === 'hero' ? 'bg-blue-950/60' : 'bg-red-950/60'} p-2 text-center">
+                    <img src="${spriteUrl(key, 'walk1')}" alt="${info.name}" class="pixelated bob" style="animation-delay:${Math.random()}s">
+                    <div class="text-[0.5rem] text-white mt-2 leading-relaxed">${info.name}</div>
+                    <div class="text-[0.45rem] ${info.side === 'hero' ? 'text-blue-300' : 'text-red-300'} mt-1 leading-relaxed">${line}</div>
+                </div>`;
+            const heroes = Object.entries(CHARACTERS).filter(([, c]) => c.side === 'hero');
+            $('hero-roster').innerHTML = heroes.map(([key, c], i) => {
+                const next = heroes[i + 1];
+                const range = next ? `${c.minLen || 1}-${next[1].minLen - 1} LETTERS` : `${c.minLen}+ LETTERS`;
+                return card(key, c, range);
+            }).join('');
+            $('enemy-roster').innerHTML = Object.entries(CHARACTERS)
+                .filter(([, c]) => c.side === 'enemy')
+                .map(([key, c]) => card(key, c, c.boss ? 'FINAL BOSS' : `${c.hp} HP`))
+                .join('');
+        }
+
+        // --- Vocabulary (Teacher Mode) ---
+
+        async function loadVocab() {
+            const data = await api(`/api/vocab?pack=${encodeURIComponent(activePackId)}`);
+            availablePacks = data.packs;
+            if (!availablePacks.includes(activePackId)) {
+                activePackId = 'default';
+                return loadVocab();
+            }
+            vocabList = data.words;
+            updatePackSelectOptions();
+            renderVocabList();
+        }
+
+        const packLabel = (p) => p.toUpperCase().replace(/_/g, ' ');
+
+        function updatePackSelectOptions() {
+            selectVocabPack.innerHTML = '';
+            availablePacks.forEach(packName => {
+                const opt = document.createElement('option');
+                opt.value = packName;
+                opt.innerText = packLabel(packName);
+                if (packName === activePackId) opt.selected = true;
+                selectVocabPack.appendChild(opt);
+            });
+            activePackLabel.innerText = `WORD PACK: ${packLabel(activePackId)} (${vocabList.length} WORDS)`;
+        }
+
+        function renderVocabList() {
+            vocabListEl.innerHTML = '';
+            if (vocabList.length === 0) {
+                vocabListEl.innerHTML = '<li class="p-4 text-center text-gray-500 font-bold text-xs">NO WORDS IN THIS PACK</li>';
+                return;
+            }
+            vocabList.forEach((item) => {
+                const li = document.createElement('li');
+                li.className = 'p-3 flex justify-between items-center gap-2 text-sm font-bold text-black uppercase';
+                const textSpan = document.createElement('span');
+                textSpan.className = 'break-words min-w-0';
+                textSpan.innerText = item.text;
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'pixel-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 text-xs font-bold shrink-0';
+                deleteBtn.innerText = 'DELETE';
+                deleteBtn.onclick = () => deleteVocabWord(item.id, deleteBtn);
+                li.appendChild(textSpan);
+                li.appendChild(deleteBtn);
+                vocabListEl.appendChild(li);
+            });
+        }
+
+        async function addVocabWord() {
+            const text = newWordInput.value.trim();
+            if (!text) return;
+            btnAddWord.disabled = true;
+            try {
+                await api('/api/vocab', { method: 'POST', body: JSON.stringify({ text, pack: activePackId }) });
+                newWordInput.value = '';
+                await loadVocab();
+            } catch (error) {
+                console.error('Error adding word:', error);
+                alert('COULD NOT ADD WORD. PLEASE TRY AGAIN.');
+            } finally {
+                btnAddWord.disabled = false;
+                newWordInput.focus();
+            }
+        }
+
+        async function deleteVocabWord(id, btn) {
+            btn.disabled = true;
+            try {
+                await api(`/api/vocab?id=${id}`, { method: 'DELETE' });
+                await loadVocab();
+            } catch (error) {
+                console.error('Error deleting word:', error);
+                btn.disabled = false;
+            }
+        }
+
+        function setActivePack(pack) {
+            activePackId = pack;
+            localStorage.setItem('spelling-clash-pack', pack);
+            return loadVocab();
+        }
+
+        // File Import Handler (Excel / CSV / Text)
+        function handleFileImport(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const packName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40) || 'imported';
+            const reader = new FileReader();
+
+            reader.onload = async function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    const wordsToImport = [];
+                    rows.forEach(row => {
+                        if (row && row[0] != null) {
+                            const val = String(row[0]).trim();
+                            if (val && val.toLowerCase() !== 'vocabulary word' && !wordsToImport.includes(val)) wordsToImport.push(val);
+                        }
+                    });
+
+                    if (wordsToImport.length > 0) {
+                        btnTriggerFile.disabled = true;
+                        const result = await api('/api/vocab', { method: 'POST', body: JSON.stringify({ words: wordsToImport, pack: packName }) });
+                        await setActivePack(result.pack);
+                        alert(`SUCCESSFULLY IMPORTED ${result.inserted.length} WORDS INTO PACK: "${packLabel(result.pack)}"!`);
+                    } else {
+                        alert('NO VALID WORDS FOUND IN FILE.');
+                    }
+                } catch (err) {
+                    console.error('File import error:', err);
+                    alert('ERROR IMPORTING FILE. PLEASE ENSURE IT IS A VALID EXCEL/CSV/TXT FILE.');
+                } finally {
+                    btnTriggerFile.disabled = false;
+                    fileImportInput.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function exportPackToExcel() {
+            if (vocabList.length === 0) {
+                alert('NO WORDS TO EXPORT IN ACTIVE PACK!');
+                return;
+            }
+            const ws = XLSX.utils.aoa_to_sheet([['Vocabulary Word'], ...vocabList.map(item => [item.text])]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Vocab Pack');
+            XLSX.writeFile(wb, `${activePackId}_vocab_pack.xlsx`);
+        }
+
+        // --- UI Interactions ---
+
+        function setupEventListeners() {
+            btnArena.addEventListener('click', () => {
+                switchTab(gameState.status === 'playing' || gameState.status === 'gameover' ? 'arena' : 'home');
+            });
+            btnTeacher.addEventListener('click', () => switchTab('teacher'));
+
+            btnAddWord.addEventListener('click', addVocabWord);
+            newWordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addVocabWord(); });
+            selectVocabPack.addEventListener('change', (e) => setActivePack(e.target.value));
+
+            btnTriggerFile.addEventListener('click', () => fileImportInput.click());
+            fileImportInput.addEventListener('change', handleFileImport);
+            btnExportPack.addEventListener('click', exportPackToExcel);
+
+            [0, 1, 2, 3].forEach(level => $(`btn-start-${level}`).addEventListener('click', () => startGame(level)));
+
+            typingInput.addEventListener('input', handleTyping);
+            typingInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && gameState.spellReady) {
+                    e.preventDefault();
+                    useSpell();
+                }
+            });
+            spellDisplay.addEventListener('click', () => { if (gameState.spellReady) useSpell(); });
+
+            btnRestart.addEventListener('click', () => {
+                if (gameState.animationFrameId) cancelAnimationFrame(gameState.animationFrameId);
+                gameState = freshState();
+                switchTab('home');
+                fetchLeaderboard();
+            });
+
+            lbButtons.forEach((btn, lvl) => btn.addEventListener('click', () => setLbLevel(lvl)));
+        }
+
+        function switchTab(tab) {
+            viewArena.classList.add('hidden');
+            viewTeacher.classList.add('hidden');
+            viewHome.classList.add('hidden');
+            const active = 'tab-active pb-2 px-2 text-sm focus:outline-none transition-colors';
+            const inactive = 'tab-inactive pb-2 px-2 text-sm focus:outline-none transition-colors';
+
+            if (tab === 'arena' || tab === 'home') {
+                btnArena.className = active;
+                btnTeacher.className = inactive;
+                if (tab === 'home') {
+                    viewHome.classList.remove('hidden');
+                } else {
+                    viewArena.classList.remove('hidden');
+                    if (gameState.status === 'playing') typingInput.focus();
+                }
+            } else {
+                btnTeacher.className = active;
+                btnArena.className = inactive;
+                viewTeacher.classList.remove('hidden');
+            }
+        }
+
+        // --- Leaderboard ---
+
+        async function fetchLeaderboard() {
+            lbList.innerHTML = '<li class="text-center text-gray-500">LOADING...</li>';
+            try {
+                const data = await api(`/api/scores?level=${currentLbLevel}`);
+                if (data.level === currentLbLevel) renderLeaderboard(data.scores);
+            } catch (e) {
+                console.error('Leaderboard fetch error:', e);
+                lbList.innerHTML = '<li class="text-center text-red-400">COULD NOT LOAD SCORES</li>';
+            }
+        }
+
+        function renderLeaderboard(scores) {
+            if (!scores.length) {
+                lbList.innerHTML = '<li class="text-center text-gray-500">NO HEROES YET. BE THE FIRST!</li>';
+                return;
+            }
+            const medals = ['text-yellow-300', 'text-gray-300', 'text-orange-400', 'text-white', 'text-white'];
+            lbList.innerHTML = '';
+            scores.forEach((s, i) => {
+                const li = document.createElement('li');
+                li.className = `flex justify-between gap-2 ${medals[i]}`;
+                const name = document.createElement('span');
+                name.className = 'truncate';
+                name.innerText = `${i + 1}. ${s.won ? '♛ ' : ''}${s.name}`;
+                const stats = document.createElement('span');
+                stats.className = 'shrink-0 text-gray-300';
+                stats.innerText = `${s.wordsSpelled}W x${s.maxCombo} ${s.accuracy}%`;
+                li.append(name, stats);
+                lbList.appendChild(li);
+            });
+        }
+
+        function setLbLevel(lvl) {
+            currentLbLevel = lvl;
+            lbButtons.forEach((btn, i) => {
+                btn.className = i === lvl ? 'text-xs font-bold text-white hover:text-yellow-400' : 'text-xs font-bold text-gray-500 hover:text-yellow-400';
+            });
+            fetchLeaderboard();
+        }
+
+        // --- Word prompts ---
+
+        function shuffle(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function scrambleWord(phrase) {
+            const scrambleOne = (word) => {
+                if (word.length < 2 || new Set(word).size < 2) return word;
+                let out = word;
+                while (out === word) out = shuffle(word.split('')).join('');
+                return out;
+            };
+            return phrase.split(' ').map(scrambleOne).join(' ');
+        }
+
+        function generateHint(phrase) {
+            return phrase.split(' ').map(word => word[0] + '_'.repeat(Math.max(0, word.length - 1))).join(' ');
+        }
+
+        function generateMisspelling(phrase) {
+            const words = phrase.split(' ');
+            const modifiedWords = words.map(word => {
+                if (word.length <= 3) return word;
+                const idx = Math.floor(Math.random() * (word.length - 2)) + 1;
+                const type = Math.floor(Math.random() * 3);
+                const chars = word.split('');
+                if (type === 0) {
+                    [chars[idx], chars[idx + 1]] = [chars[idx + 1], chars[idx]];
+                } else if (type === 1) {
+                    chars.splice(idx, 1);
+                } else {
+                    const subChars = 'aeioubcdfghjklmnpqrstvwxyz';
+                    chars[idx] = subChars[Math.floor(Math.random() * subChars.length)];
+                }
+                return chars.join('');
+            });
+            let result = modifiedWords.join(' ');
+            if (result === phrase) result += 's';
+            return result;
+        }
+
+        function pickNewWord() {
+            if (vocabList.length === 1) {
+                gameState.targetWord = vocabList[0].text;
+            } else {
+                let nextWord = gameState.targetWord;
+                while (nextWord === gameState.targetWord) {
+                    nextWord = vocabList[Math.floor(Math.random() * vocabList.length)].text;
+                }
+                gameState.targetWord = nextWord;
+            }
+
+            if (gameState.currentLevel === 0) {
+                renderMCQOptions();
+            } else if (gameState.currentLevel === 2) {
+                gameState.displayPrompt = scrambleWord(gameState.targetWord);
+            } else if (gameState.currentLevel === 3) {
+                gameState.displayPrompt = generateHint(gameState.targetWord);
+            }
+
+            gameState.currentWordPerfect = true;
+            updateWordDisplay(typingInput.value || '');
+        }
+
+        function renderMCQOptions() {
+            mcqContainer.innerHTML = '';
+            const correct = gameState.targetWord;
+            let m1 = generateMisspelling(correct);
+            let m2 = generateMisspelling(correct);
+            let guard = 0;
+            while (m1 === correct && guard++ < 20) m1 = generateMisspelling(correct);
+            while ((m2 === correct || m2 === m1) && guard++ < 40) m2 = generateMisspelling(correct);
+            if (m2 === m1) m2 = m1 + 'e';
+
+            shuffle([correct, m1, m2]).forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'pixel-btn bg-yellow-400 hover:bg-yellow-500 text-black py-3 px-2 text-xs font-bold leading-relaxed break-words uppercase';
+                btn.innerText = opt;
+                btn.onclick = () => handleMCQChoice(opt === correct, btn);
+                mcqContainer.appendChild(btn);
+            });
+        }
+
+        function handleMCQChoice(isCorrect, btn) {
+            if (gameState.status !== 'playing') return;
+            if (isCorrect) {
+                handleWordSuccess(gameState.targetWord);
+            } else {
+                gameState.currentWordPerfect = false;
+                gameState.combo = 1;
+                btn.disabled = true;
+                btn.classList.add('shake', 'bg-gray-300');
+                updateComboUI(true);
+            }
+        }
+
+        function handleWordSuccess(wordSpelled) {
+            gameState.wordsSpelled += 1;
+            if (gameState.currentWordPerfect) gameState.perfectWords += 1;
+
+            // Repeating the same word breaks the combo
+            let brokeCombo = false;
+            if (gameState.lastSpelledWord && wordSpelled.toLowerCase() === gameState.lastSpelledWord.toLowerCase()) {
+                gameState.combo = 1;
+                brokeCombo = true;
+            } else if (!gameState.lastSpelledWord) {
+                gameState.combo = 1;
+            } else {
+                gameState.combo = Math.min(gameState.combo + 1, 5);
+            }
+            if (brokeCombo) updateComboUI(true);
+            gameState.maxCombo = Math.max(gameState.maxCombo, gameState.combo);
+
+            if (gameState.currentWordPerfect && wordSpelled.length >= 7 && !gameState.spellReady) {
+                gameState.spellReady = Math.random() > 0.5 ? 'FREEZE' : 'HEAL';
+                spellDisplay.classList.remove('hidden');
+                spellNameDisplay.innerText = gameState.spellReady;
+                spellHint.innerText = gameState.currentLevel === 0 ? 'TAP TO USE' : '[ENTER] TO USE';
+            }
+
+            triggerSpawn(wordSpelled);
+            gameState.lastSpelledWord = wordSpelled;
+            typingInput.value = '';
+            pickNewWord();
+        }
+
+        const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        function updateWordDisplay(typedSoFar) {
+            if (gameState.status !== 'playing') return;
+            if (gameState.currentLevel === 0) {
+                currentWordDisplay.innerHTML = `<span class="text-pink-600 text-sm md:text-base">SELECT CORRECT SPELLING:</span>`;
+            } else if (gameState.currentLevel === 1) {
+                const targetStr = gameState.targetWord.toUpperCase();
+                const typedStr = typedSoFar.toUpperCase();
+                let html = '';
+                for (let i = 0; i < targetStr.length; i++) {
+                    const ch = targetStr[i] === ' ' ? '&nbsp;' : escapeHtml(targetStr[i]);
+                    const done = i < typedStr.length && typedStr[i] === targetStr[i];
+                    html += `<span class="${done ? 'text-blue-600' : 'text-gray-300'}">${ch}</span>`;
+                }
+                currentWordDisplay.innerHTML = html;
+            } else if (gameState.currentLevel === 2) {
+                currentWordDisplay.innerHTML = `<span class="text-gray-500 text-sm mr-2">UNSCRAMBLE:</span><span class="text-blue-600">${escapeHtml(gameState.displayPrompt.toUpperCase())}</span>`;
+            } else if (gameState.currentLevel === 3) {
+                currentWordDisplay.innerHTML = `<span class="text-gray-500 text-sm mr-2">HINT:</span><span class="text-blue-600" style="letter-spacing: 0.25em;">${escapeHtml(gameState.displayPrompt.toUpperCase())}</span>`;
+            }
+        }
+
+        function handleTyping(e) {
+            if (gameState.status !== 'playing' || gameState.currentLevel === 0) return;
+            const typed = e.target.value;
+            updateWordDisplay(typed);
+
+            const typedLower = typed.toLowerCase();
+            const isError = gameState.currentLevel === 3
+                ? !vocabList.some(v => v.text.toLowerCase().startsWith(typedLower))
+                : !gameState.targetWord.toLowerCase().startsWith(typedLower);
+            if (isError && typed.length > 0) {
+                gameState.currentWordPerfect = false;
+                typingInput.classList.add('bg-red-100');
+            } else {
+                typingInput.classList.remove('bg-red-100');
+            }
+
+            let wordSpelled = null;
+            const typedClean = typed.trim().toLowerCase();
+            if (gameState.currentLevel === 3) {
+                const matched = vocabList.find(v => v.text.toLowerCase() === typedClean);
+                if (matched) wordSpelled = matched.text;
+            } else if (typedClean === gameState.targetWord.toLowerCase()) {
+                wordSpelled = gameState.targetWord;
+            }
+            if (wordSpelled) {
+                typingInput.classList.remove('bg-red-100');
+                handleWordSuccess(wordSpelled);
+            }
+        }
+
+        function updateComboUI(brokeCombo = false) {
+            const base = 'absolute top-2 right-4 text-xl md:text-2xl font-bold transition-transform duration-100 ';
+            if (gameState.combo > 1 && !brokeCombo) {
+                comboDisplay.classList.remove('hidden');
+                comboDisplay.innerText = `COMBO x${gameState.combo}`;
+                comboDisplay.className = base + (gameState.combo >= 5 ? 'text-red-500 animate-pulse scale-125' : 'text-yellow-500 scale-110');
+                setTimeout(() => comboDisplay.classList.remove('scale-110', 'scale-125'), 150);
+            } else if (brokeCombo) {
+                comboDisplay.classList.remove('hidden');
+                comboDisplay.innerText = 'COMBO BROKEN!';
+                comboDisplay.className = base + 'text-gray-400';
+                setTimeout(() => { if (gameState.combo === 1) comboDisplay.classList.add('hidden'); }, 1000);
+            } else {
+                comboDisplay.classList.add('hidden');
+            }
+        }
+
+        // --- Units ---
+
+        function makeUnit(key, x) {
+            const c = CHARACTERS[key];
+            return {
+                key,
+                x,
+                y: GROUND_Y + (Math.random() * 50 - 25),
+                hp: c.hp,
+                maxHp: c.hp,
+                damage: c.damage,
+                speed: c.speed,
+                attackTimer: 0,
+                attackAnim: 0,
+                hitFlash: 0,
+                animT: Math.random(),
+                isMoving: true
+            };
+        }
+
+        function heroForWord(word) {
+            const len = word.length;
+            const heroes = Object.entries(CHARACTERS).filter(([, c]) => c.side === 'hero');
+            let pick = heroes[0][0];
+            heroes.forEach(([key, c]) => { if (len >= c.minLen) pick = key; });
+            return pick;
+        }
+
+        function triggerSpawn(word) {
+            const key = heroForWord(word);
+            for (let i = 0; i < gameState.combo; i++) {
+                setTimeout(() => {
+                    if (gameState.status !== 'playing') return;
+                    gameState.friendlies.push(makeUnit(key, BASE_ZONE + 8 - Math.random() * 15));
+                }, i * 150);
+            }
+            addFloatingText(BASE_ZONE + 20, GROUND_Y - 80, CHARACTERS[key].name + (gameState.combo > 1 ? ` x${gameState.combo}` : ''), '#93c5fd');
+            if (gameState.combo > 1) updateComboUI(false);
+        }
+
+        function useSpell() {
+            if (gameState.spellReady === 'FREEZE') {
+                gameState.freezeTimer = 4.0;
+                showBanner('FREEZE!');
+            } else if (gameState.spellReady === 'HEAL') {
+                gameState.playerHP = Math.min(PLAYER_MAX_HP, gameState.playerHP + 300);
+                gameState.healFlash = 1;
+                gameState.friendlies.forEach(u => { u.hp = u.maxHp; });
+                showBanner('HEAL! +300');
+                updateHealthBars();
+            }
+            gameState.spellReady = null;
+            spellDisplay.classList.add('hidden');
+            typingInput.focus();
+        }
+
+        function spawnEnemy() {
+            const w = gameState.wordsSpelled;
+            const r = Math.random();
+            let key = 'goblin';
+            if (w < 3) {
+                key = 'goblin';
+            } else if (w < 8) {
+                key = r < 0.6 ? 'goblin' : 'skeleton';
+            } else if (w < 15) {
+                if (r < 0.35) key = 'skeleton';
+                else if (r < 0.65) key = 'goblin';
+                else if (r < 0.88) key = 'darkknight';
+                else key = 'dragon';
+            } else {
+                if (r < 0.25) key = 'dragon';
+                else if (r < 0.45) key = 'darkknight';
+                else if (r < 0.65) key = 'skeleton';
+                else if (r < 0.85) key = 'goblin';
+                else key = 'darklord';
+            }
+            gameState.enemies.push(makeUnit(key, W - BASE_ZONE - 8));
+        }
+
+        function summonBoss() {
+            gameState.bossSummoned = true;
+            const boss = makeUnit('king', W - BASE_ZONE - 8);
+            boss.y = GROUND_Y + 10;
+            gameState.enemies.push(boss);
+            showBanner('THE DARKEST KING RIDES OUT!');
+        }
+
+        function showBanner(text) {
+            gameState.bannerText = text;
+            gameState.bannerTimer = 2.2;
+        }
+
+        function addFloatingText(x, y, text, color) {
+            gameState.effects.push({ x, y, text, color, t: 0, life: 0.9 });
+        }
+
+        function updateHealthBars() {
+            const playerPercent = Math.max(0, (gameState.playerHP / PLAYER_MAX_HP) * 100);
+            const enemyPercent = Math.max(0, (gameState.enemyHP / ENEMY_MAX_HP) * 100);
+            playerHealthBar.style.width = `${playerPercent}%`;
+            enemyHealthBar.style.width = `${enemyPercent}%`;
+            playerHealthText.innerText = `${Math.max(0, gameState.playerHP)} / ${PLAYER_MAX_HP}`;
+            enemyHealthText.innerText = `${Math.max(0, gameState.enemyHP)} / ${ENEMY_MAX_HP}`;
+
+            if (gameState.status === 'playing') {
+                if (!gameState.bossSummoned && gameState.enemyHP > 0 && gameState.enemyHP <= ENEMY_MAX_HP / 2) summonBoss();
+                if (gameState.playerHP <= 0 || gameState.enemyHP <= 0) endGame(gameState.playerHP > 0);
+            }
+        }
+
+        function startGame(level) {
+            if (vocabList.length === 0) {
+                alert('PLEASE ADD SOME WORDS IN THE TEACHER PORTAL FIRST!');
+                return;
+            }
+            const playerName = playerNameInput.value.trim().toUpperCase() || 'PLAYER';
+            playerNameDisplay.innerText = playerName;
+
+            if (gameState.animationFrameId) cancelAnimationFrame(gameState.animationFrameId);
+            gameState = freshState({ status: 'playing', currentLevel: level, lastEnemySpawn: performance.now() });
+
+            switchTab('arena');
+            updateHealthBars();
+            updateComboUI();
+            spellDisplay.classList.add('hidden');
+            $('summary-stats').classList.add('hidden');
+            btnRestart.classList.add('hidden');
+            gameOverlay.classList.add('hidden');
+
+            if (level === 0) {
+                typingInput.classList.add('hidden');
+                mcqContainer.classList.remove('hidden');
+                interfaceTitle.innerText = 'CHOOSE CORRECT SPELLING TO SUMMON';
+            } else {
+                typingInput.classList.remove('hidden', 'bg-red-100');
+                mcqContainer.classList.add('hidden');
+                interfaceTitle.innerText = 'SPELL TO SUMMON';
+                typingInput.disabled = false;
+                typingInput.value = '';
+                typingInput.focus();
+            }
+
+            pickNewWord();
+            gameState.lastTime = performance.now();
+            gameState.animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        async function endGame(playerWon) {
+            gameState.status = 'gameover';
+            gameState.playerWon = playerWon;
+            gameState.endTimer = 0;
+            typingInput.disabled = true;
+            typingInput.value = '';
+            mcqContainer.classList.add('hidden');
+            spellDisplay.classList.add('hidden');
+            currentWordDisplay.innerHTML = playerWon ? 'VICTORY' : 'DEFEAT';
+
+            // Let the castle-fall animation play before the report card
+            setTimeout(() => {
+                gameOverlay.classList.remove('hidden');
+                overlayTitle.innerText = playerWon ? 'VICTORY!' : 'DEFEAT!';
+                overlayTitle.className = 'text-2xl md:text-3xl mb-4 text-center font-bold ' + (playerWon ? 'text-green-400' : 'text-red-500');
+                overlayMsg.innerText = playerWon ? "THE DARKEST KING'S CASTLE HAS FALLEN." : 'THE DARK SIDE TOOK YOUR KINGDOM.';
+                $('summary-stats').classList.remove('hidden');
+                btnRestart.classList.remove('hidden');
+            }, 1600);
+
+            const acc = gameState.wordsSpelled > 0 ? Math.round((gameState.perfectWords / gameState.wordsSpelled) * 100) : 0;
+            $('stat-words').innerText = gameState.wordsSpelled;
+            $('stat-acc').innerText = acc + '%';
+            $('stat-combo').innerText = 'x' + gameState.maxCombo;
+
+            try {
+                await api('/api/scores', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: playerNameInput.value.trim().toUpperCase() || 'PLAYER',
+                        level: gameState.currentLevel,
+                        maxCombo: gameState.maxCombo,
+                        accuracy: acc,
+                        wordsSpelled: gameState.wordsSpelled,
+                        won: playerWon
+                    })
+                });
+            } catch (e) {
+                console.error('Score save error:', e);
+            }
+        }
+
+        // --- Drawing ---
+
+        const bgCanvas = document.createElement('canvas');
+        bgCanvas.width = W;
+        bgCanvas.height = H;
+        (function paintBackground() {
+            const b = bgCanvas.getContext('2d');
+            // Sky: dawn over the kingdom fading into the dark side's storm
+            const sky = b.createLinearGradient(0, 0, W, 0);
+            sky.addColorStop(0, '#9fc6e8');
+            sky.addColorStop(0.5, '#8f88b5');
+            sky.addColorStop(1, '#3a2c4a');
+            b.fillStyle = sky;
+            b.fillRect(0, 0, W, H);
+            // Far hills
+            b.fillStyle = '#56708a';
+            for (let x = 0; x < W; x += 4) {
+                const h = 150 + Math.sin(x / 70) * 14 + Math.sin(x / 23) * 5;
+                b.fillRect(x, h, 4, H - h);
+            }
+            // Grass fading to scorched earth
+            const ground = b.createLinearGradient(0, 0, W, 0);
+            ground.addColorStop(0, '#4f8a3a');
+            ground.addColorStop(0.55, '#5d6e3a');
+            ground.addColorStop(1, '#3d3431');
+            b.fillStyle = ground;
+            b.fillRect(0, 190, W, H - 190);
+            // Dirt battle road
+            b.fillStyle = 'rgba(120, 88, 56, 0.55)';
+            b.fillRect(0, 214, W, 70);
+            b.fillStyle = 'rgba(0, 0, 0, 0.12)';
+            for (let i = 0; i < 140; i++) {
+                const x = (i * 97) % W;
+                const y = 196 + ((i * 53) % 120);
+                b.fillRect(x, y, 4, 4);
+            }
+        })();
+
+        function drawCastles() {
+            ctx.drawImage(bgCanvas, 0, 0);
+            const t = performance.now() / 1000;
+            const shake = (gameState.status === 'gameover') ? Math.sin(t * 50) * 2 : 0;
+            if (sprites.humanCastle) {
+                const dx = (!gameState.playerWon && gameState.status === 'gameover') ? shake : 0;
+                ctx.drawImage(sprites.humanCastle, dx, 0, CASTLE_W, H);
+            }
+            if (sprites.darkCastle) {
+                const dx = (gameState.playerWon && gameState.status === 'gameover') ? shake : 0;
+                ctx.drawImage(sprites.darkCastle, W - CASTLE_W + dx, 0, CASTLE_W, H);
+            }
+            // Edge shading so the castles blend into the field
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.fillRect(CASTLE_W - 4, 0, 4, H);
+            ctx.fillRect(W - CASTLE_W, 0, 4, H);
+            if (gameState.healFlash > 0) {
+                ctx.fillStyle = `rgba(134, 239, 172, ${gameState.healFlash * 0.45})`;
+                ctx.fillRect(0, 0, CASTLE_W, H);
+            }
+        }
+
+        function spriteScale(key) {
+            const walk = sprites[key] && sprites[key].walk1;
+            return walk ? CHARACTERS[key].height / walk.naturalHeight : 1;
+        }
+
+        // Draws a frame with its feet at (x, footY). Attack frames are anchored at the
+        // character's body so the beam/weapon extends towards the opponent.
+        function drawFrame(key, frame, x, footY, alpha = 1) {
+            const img = sprites[key] && sprites[key][frame];
+            if (!img) return;
+            const s = spriteScale(key);
+            const w = img.naturalWidth * s;
+            const h = img.naturalHeight * s;
+            const isHero = CHARACTERS[key].side === 'hero';
+            let left = x - w / 2;
+            if (frame === 'attack') {
+                const bodyW = sprites[key].walk1.naturalWidth * s;
+                left = isHero ? x - bodyW / 2 : x + bodyW / 2 - w;
+            }
+            ctx.globalAlpha = alpha;
+            ctx.drawImage(img, left, footY - h, w, h);
+            ctx.globalAlpha = 1;
+        }
+
+        function unitFootY(u) {
+            if (!CHARACTERS[u.key].flying) return u.y;
+            return u.y - 40 + Math.sin(u.animT * 4) * 6;
+        }
+
+        function drawUnit(u) {
+            const c = CHARACTERS[u.key];
+            const footY = unitFootY(u);
+            // Ground shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.ellipse(u.x, u.y, c.height * 0.28, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const frame = u.attackAnim > 0 ? 'attack' : (Math.floor(u.animT * 5) % 2 === 0 ? 'walk1' : 'walk2');
+            drawFrame(u.key, frame, u.x, footY);
+
+            if (u.hitFlash > 0) {
+                ctx.fillStyle = `rgba(255,255,255,${u.hitFlash})`;
+                ctx.fillRect(u.x - 3, footY - c.height * 0.6, 6, 6);
+            }
+            if (c.side === 'enemy' && gameState.freezeTimer > 0) {
+                ctx.fillStyle = 'rgba(103, 232, 249, 0.35)';
+                ctx.fillRect(u.x - c.height * 0.35, footY - c.height, c.height * 0.7, c.height);
+                ctx.fillStyle = '#e0f2fe';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText('*', u.x, footY - c.height - 12);
+            }
+            drawUnitHealth(u.x, footY - c.height - 4, u.hp, u.maxHp, c.boss);
+        }
+
+        function drawUnitHealth(x, y, hp, maxHp, boss) {
+            const pct = Math.max(0, hp / maxHp);
+            const w = boss ? 60 : 30;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(x - w / 2, y - 5, w, 5);
+            ctx.fillStyle = pct > 0.5 ? '#22c55e' : (pct > 0.2 ? '#eab308' : '#ef4444');
+            ctx.fillRect(x - w / 2 + 1, y - 4, (w - 2) * pct, 3);
+        }
+
+        function drawEffects(dt) {
+            ctx.textAlign = 'center';
+            ctx.font = '8px "Press Start 2P"';
+            gameState.effects = gameState.effects.filter(fx => {
+                fx.t += dt;
+                const a = 1 - fx.t / fx.life;
+                if (a <= 0) return false;
+                ctx.globalAlpha = a;
+                ctx.fillStyle = '#000';
+                ctx.fillText(fx.text, fx.x + 1, fx.y - fx.t * 30 + 1);
+                ctx.fillStyle = fx.color;
+                ctx.fillText(fx.text, fx.x, fx.y - fx.t * 30);
+                ctx.globalAlpha = 1;
+                return true;
+            });
+
+            if (gameState.bannerTimer > 0) {
+                gameState.bannerTimer -= dt;
+                ctx.globalAlpha = Math.min(1, gameState.bannerTimer);
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(W / 2 - 230, 28, 460, 36);
+                ctx.font = '14px "Press Start 2P"';
+                ctx.fillStyle = '#facc15';
+                ctx.fillText(gameState.bannerText, W / 2, 52);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function drawCorpses(dt) {
+            gameState.corpses = gameState.corpses.filter(c => {
+                c.t += dt;
+                if (c.t > 1.1) return false;
+                drawFrame(c.key, 'defeat', c.x, c.y, 1 - c.t / 1.1);
+                return true;
+            });
+        }
+
+        function drawIdleScene() {
+            drawCastles();
+            ctx.textAlign = 'center';
+            ctx.font = '12px "Press Start 2P"';
+            ctx.fillStyle = '#facc15';
+            ctx.fillText('SPELL A WORD TO SUMMON A HERO', W / 2, 120);
+        }
+
+        function gameLoop(currentTime) {
+            const dt = Math.min(0.05, (currentTime - gameState.lastTime) / 1000);
+            gameState.lastTime = currentTime;
+
+            drawCastles();
+
+            if (gameState.status === 'gameover') {
+                // Castle falls: expanding flashing blast over the losing side
+                gameState.endTimer += dt;
+                gameState.explosionRadius += 160 * dt;
+                const cx = gameState.playerWon ? W - CASTLE_W / 2 : CASTLE_W / 2;
+                if (gameState.explosionRadius < 320) {
+                    ctx.globalAlpha = 0.75;
+                    ctx.fillStyle = (Math.floor(gameState.explosionRadius) % 30 < 15) ? '#ef4444' : '#fbbf24';
+                    ctx.beginPath();
+                    ctx.arc(cx, H - 60, gameState.explosionRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+                const survivors = gameState.playerWon ? gameState.friendlies : gameState.enemies;
+                survivors.forEach(u => { u.animT += dt; u.attackAnim = 0; });
+                [...survivors].sort((a, b) => a.y - b.y).forEach(drawUnit);
+                drawCorpses(dt);
+                if (gameState.endTimer < 3) gameState.animationFrameId = requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            if (gameState.freezeTimer > 0) gameState.freezeTimer -= dt;
+            if (gameState.healFlash > 0) gameState.healFlash = Math.max(0, gameState.healFlash - dt);
+
+            // Enemy spawner gets faster as you spell more words
+            const spawnInterval = Math.max(1000, 3500 - gameState.wordsSpelled * 150);
+            if (gameState.freezeTimer <= 0 && currentTime - gameState.lastEnemySpawn > spawnInterval) {
+                spawnEnemy();
+                gameState.lastEnemySpawn = currentTime;
+            }
+
+            const frozen = gameState.freezeTimer > 0;
+            gameState.friendlies.forEach(u => {
+                u.attackTimer -= dt;
+                u.attackAnim -= dt;
+                u.hitFlash = Math.max(0, u.hitFlash - dt * 3);
+                if (u.isMoving) { u.x += u.speed * dt; u.animT += dt; }
+                u.isMoving = true;
+            });
+            gameState.enemies.forEach(u => {
+                u.attackTimer -= dt;
+                u.attackAnim -= dt;
+                u.hitFlash = Math.max(0, u.hitFlash - dt * 3);
+                if (u.isMoving && !frozen) { u.x -= u.speed * dt; u.animT += dt; }
+                u.isMoving = true;
+            });
+
+            // Combat: units stop when they meet and trade blows once per second
+            for (const f of gameState.friendlies) {
+                for (const e of gameState.enemies) {
+                    if (f.hp > 0 && e.hp > 0 && Math.abs(f.x - e.x) < MELEE_RANGE) {
+                        f.isMoving = false;
+                        e.isMoving = false;
+                        if (f.attackTimer <= 0) {
+                            e.hp -= f.damage;
+                            e.hitFlash = 1;
+                            f.attackTimer = 1.0;
+                            f.attackAnim = 0.35;
+                            addFloatingText(e.x, unitFootY(e) - CHARACTERS[e.key].height - 10, `-${f.damage}`, '#fde047');
+                        }
+                        if (e.attackTimer <= 0 && !frozen) {
+                            f.hp -= e.damage;
+                            f.hitFlash = 1;
+                            e.attackTimer = 1.0;
+                            e.attackAnim = 0.35;
+                            addFloatingText(f.x, f.y - CHARACTERS[f.key].height - 10, `-${e.damage}`, '#fca5a5');
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Fallen units leave a fading defeat pose
+            const bury = (u) => gameState.corpses.push({ key: u.key, x: u.x, y: u.y, t: 0 });
+            gameState.friendlies = gameState.friendlies.filter(u => (u.hp > 0) || (bury(u), false));
+            gameState.enemies = gameState.enemies.filter(u => (u.hp > 0) || (bury(u), false));
+
+            // Units that reach the opposing castle strike it
+            let hpChanged = false;
+            gameState.friendlies = gameState.friendlies.filter(u => {
+                if (u.x > W - BASE_ZONE) {
+                    gameState.enemyHP -= u.damage;
+                    addFloatingText(W - CASTLE_W / 2, 120, `-${u.damage}`, '#fde047');
+                    hpChanged = true;
+                    return false;
+                }
+                return true;
+            });
+            gameState.enemies = gameState.enemies.filter(u => {
+                if (u.x < BASE_ZONE) {
+                    gameState.playerHP -= u.damage;
+                    addFloatingText(CASTLE_W / 2, 120, `-${u.damage}`, '#fca5a5');
+                    hpChanged = true;
+                    return false;
+                }
+                return true;
+            });
+
+            drawCorpses(dt);
+            [...gameState.friendlies, ...gameState.enemies].sort((a, b) => a.y - b.y).forEach(drawUnit);
+            drawEffects(dt);
+
+            if (hpChanged) updateHealthBars();
+            gameState.animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // Boot
+        initApp();
+    </script>
+</body>
+</html>
